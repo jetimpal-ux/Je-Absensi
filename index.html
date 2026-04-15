@@ -229,31 +229,51 @@
         }
 
         // ACTION ABSENSI
-        async function doAttendance() {
-            if(!isInside) return alert("Anda harus di area kantor!");
-            
-            const timeNow = new Date().toLocaleTimeString('id-ID', {hour12: false});
-            const today = new Date().toISOString().split('T')[0];
-            const coords = `${userPos.lat},${userPos.lng}`;
+       async function doAttendance() {
+    // 1. Cek Lokasi
+    if(!isInside) return alert("GAGAL: Anda berada di luar radius kantor!");
+    
+    // 2. Cek apakah user sudah login (ID Pegawai ada?)
+    if(!currentUser || !currentUser.id) {
+        alert("GAGAL: Data login tidak ditemukan. Silakan logout (tombol merah) lalu login kembali.");
+        return;
+    }
 
-            if(!hasCheckedIn) {
-                // Proses Masuk
-                const { error } = await sb.from('absensi').insert([{
-                    pegawai_id: currentUser.id,
-                    jam_masuk: timeNow,
-                    lokasi_masuk: coords,
-                    tanggal: today
-                }]);
-                if(!error) { alert("Berhasil Absen Masuk!"); location.reload(); }
-            } else {
-                // Proses Keluar
-                const { error } = await sb.from('absensi').update({
-                    jam_keluar: timeNow,
-                    lokasi_keluar: coords
-                }).eq('pegawai_id', currentUser.id).eq('tanggal', today);
-                if(!error) { alert("Berhasil Absen Pulang! Hati-hati di jalan."); location.reload(); }
-            }
+    const timeNow = new Date().toLocaleTimeString('id-ID', {hour12: false});
+    const today = new Date().toISOString().split('T')[0];
+    const coords = `${userPos.lat},${userPos.lng}`;
+
+    try {
+        if(!hasCheckedIn) {
+            // PROSES MASUK
+            const { error } = await sb.from('absensi').insert([{
+                pegawai_id: currentUser.id,
+                jam_masuk: timeNow,
+                lokasi_masuk: coords,
+                tanggal: today,
+                status: 'Hadir'
+            }]);
+            
+            if(error) throw error;
+            alert("BERHASIL ABSEN MASUK!\nJam: " + timeNow);
+            location.reload();
+        } else {
+            // PROSES KELUAR
+            const { error } = await sb.from('absensi').update({
+                jam_keluar: timeNow,
+                lokasi_keluar: coords
+            }).eq('pegawai_id', currentUser.id).eq('tanggal', today);
+            
+            if(error) throw error;
+            alert("BERHASIL ABSEN PULANG!\nHati-hati di jalan.");
+            location.reload();
         }
+    } catch (err) {
+        // Jika ada error database, ini akan muncul di HP
+        alert("ERROR DATABASE: " + (err.message || "Koneksi terputus"));
+        console.error(err);
+    }
+}
 
         // IZIN
         async function handleIzin() {
