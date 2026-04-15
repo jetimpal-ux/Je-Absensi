@@ -239,7 +239,8 @@
         return;
     }
 
-    const timeNow = new Date().toLocaleTimeString('id-ID', {hour12: false});
+    // Kita ganti titik menjadi titik dua agar diterima Supabase
+const timeNow = new Date().toLocaleTimeString('id-ID', {hour12: false}).replace(/\./g, ':');
     const today = new Date().toISOString().split('T')[0];
     const coords = `${userPos.lat},${userPos.lng}`;
 
