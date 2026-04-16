@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Absen Pro - Bitung</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8fafc; color: #1e293b; }
+        @media print { 
+            .no-print { display: none !important; } 
+            body { background: white; padding: 0; }
+            .print-area { border: none; box-shadow: none; width: 100%; max-width: 100%; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { border: 1px solid #e2e8f0; padding: 8px; }
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="max-w-6xl mx-auto print-area">
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 no-print">
+            <div>
+                <h1 class="text-3xl font-black italic uppercase tracking-tighter text-slate-800">ADMIN <span class="text-blue-600">PANEL</span></h1>
+                <p class="text-slate-500 font-bold text-xs uppercase tracking-widest">Monitoring Absensi</p>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="window.print()" class="bg-slate-800 text-white px-5 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-black transition-all">
+                    <i class="fa fa-print"></i> Cetak Laporan
+                </button>
+                <button onclick="location.reload()" class="bg-blue-600 text-white p-3 rounded-2xl shadow-lg shadow-blue-200"><i class="fa fa-sync"></i></button>
+            </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm mb-8 no-print">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="text-[10px] font-black uppercase text-slate-400 mb-2 block">Filter Bulan</label>
+                    <select id="filter-bulan" onchange="loadSemuaData()" class="w-full bg-slate-50 border-2 border-slate-100 p-3 rounded-xl font-bold outline-none">
+                        <option value="01">Januari</option><option value="02">Februari</option><option value="03">Maret</option>
+                        <option value="04">April</option><option value="05">Mei</option><option value="06">Juni</option>
+                        <option value="07">Juli</option><option value="08">Agustus</option><option value="09">September</option>
+                        <option value="10">Oktober</option><option value="11">November</option><option value="12">Desember</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-[10px] font-black uppercase text-slate-400 mb-2 block">Cari Nama Pegawai</label>
+                    <input type="text" id="cari-nama" onkeyup="filterTabel()" placeholder="Ketik nama karyawan..." class="w-full bg-slate-50 border-2 border-slate-100 p-3 rounded-xl font-bold outline-none focus:border-blue-500">
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden mb-12">
+            <div class="p-6 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
+                <h3 class="font-black uppercase text-slate-800 tracking-tight flex items-center gap-2">
+                    <i class="fa fa-clock text-blue-600"></i> Monitoring Jam Absen
+                </h3>
+                <span id="label-periode" class="text-[10px] font-black bg-white border px-3 py-1 rounded-full uppercase text-slate-500 italic">Memuat...</span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left" id="tabel-absen">
+                    <thead>
+                        <tr class="bg-white border-b border-slate-100">
+                            <th class="p-5 text-[10px] font-black uppercase text-slate-400">Pegawai & Tanggal</th>
+                            <th class="p-5 text-[10px] font-black uppercase text-slate-400 text-center">Jam Masuk</th>
+                            <th class="p-5 text-[10px] font-black uppercase text-slate-400 text-center">Jam Pulang</th>
+                            <th class="p-5 text-[10px] font-black uppercase text-slate-400 text-center no-print">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="body-absen" class="divide-y divide-slate-50">
+                        <tr><td colspan="4" class="p-10 text-center font-bold text-slate-300 italic">Mengambil data dari Supabase...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="no-print">
+            <h3 class="font-black uppercase text-slate-800 mb-4 px-2 tracking-tight flex items-center gap-2">
+                <i class="fa fa-envelope-open text-amber-500"></i> Persetujuan Izin & Sakit
+            </h3>
+            <div id="list-izin" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-20">
+                </div>
+        </div>
+    </div>
+
+    <script>
+        const SB_URL = 'https://cvswzigomnpnllsgcqoc.supabase.co';
+        const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN2c3d6aWdvbW5wbmxsc2djcW9jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4ODMzMTMsImV4cCI6MjA5MTQ1OTMxM30.QZ-FVL2o100ncLh70v8yg0TmtiFo7hA2fxlyhdRw9OQ';
+        const sb = supabase.createClient(SB_URL, SB_KEY);
+
+        const d = new Date();
+        document.getElementById('filter-bulan').value = String(d.getMonth() + 1).padStart(2, '0');
+
+        async function loadSemuaData() {
+            const bulan = document.getElementById('filter-bulan').value;
+            const tahun = d.getFullYear();
+            const filterDate = `${tahun}-${bulan}`;
+            
+            document.getElementById('label-periode').innerText = document.getElementById('filter-bulan').options[document.getElementById('filter-bulan').selectedIndex].text + " " + tahun;
+
+            // Load Absensi
+            const { data: absData, error: absErr } = await sb
+                .from('absensi')
+                .select('*, pegawai(nama)')
+                .filter('tanggal', 'ilike', `%${filterDate}%`)
+                .order('tanggal', { ascending: false });
+
+            if (!absErr) {
+                renderAbsensi(absData);
+            }
+
+            // Load Izin
+            const { data: iznData } = await sb.from('izin').select('*, pegawai(nama)').order('id', {ascending:false});
+            renderIzin(iznData);
+        }
+
+        function renderAbsensi(data) {
+            const body = document.getElementById('body-absen');
+            if(data.length === 0) {
+                body.innerHTML = `<tr><td colspan="4" class="p-10 text-center font-bold text-slate-300">Tidak ada data absen bulan ini</td></tr>`;
+                return;
+            }
+            body.innerHTML = data.map(row => `
+                <tr class="hover:bg-blue-50/30 transition-all">
+                    <td class="p-5">
+                        <span class="block font-black text-slate-800 text-base">${row.pegawai?.nama || 'Ex-Pegawai'}</span>
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">${row.tanggal}</span>
+                    </td>
+                    <td class="p-5 text-center">
+                        <span class="block text-[9px] font-black text-slate-300 uppercase mb-1">Masuk</span>
+                        <span class="text-xl font-black text-blue-600 tabular-nums">${row.jam_masuk || '--:--'}</span>
+                    </td>
+                    <td class="p-5 text-center">
+                        <span class="block text-[9px] font-black text-slate-300 uppercase mb-1">Pulang</span>
+                        <span class="text-xl font-black text-amber-600 tabular-nums">${row.jam_keluar || '--:--'}</span>
+                    </td>
+                    <td class="p-5 text-center no-print">
+                        <span class="px-3 py-1 bg-emerald-100 text-emerald-700 text-[9px] font-black rounded-full uppercase">Hadir</span>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function renderIzin(data) {
+            const list = document.getElementById('list-izin');
+            if(!data || data.length === 0) {
+                list.innerHTML = `<p class="text-slate-400 font-bold italic p-2">Belum ada pengajuan izin.</p>`;
+                return;
+            }
+            list.innerHTML = data.map(i => `
+                <div class="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm relative overflow-hidden">
+                    <div class="flex justify-between items-start mb-2">
+                        <div>
+                            <span class="block font-black text-slate-800 uppercase text-sm">${i.pegawai?.nama}</span>
+                            <span class="text-[10px] font-bold text-blue-500">${i.tanggal_mulai}</span>
+                        </div>
+                        <span class="text-[9px] px-3 py-1 bg-slate-100 rounded-full font-black uppercase text-slate-500">${i.status || 'Pending'}</span>
+                    </div>
+                    <p class="text-xs text-slate-500 mb-4 bg-slate-50 p-3 rounded-xl border border-dashed font-medium italic">"${i.alasan}"</p>
+                    <div class="flex gap-2">
+                        <button onclick="updateStatusIzin('${i.id}', 'Disetujui')" class="flex-1 bg-emerald-500 text-white py-3 rounded-xl text-[10px] font-black uppercase hover:bg-emerald-600">Setujui</button>
+                        <button onclick="updateStatusIzin('${i.id}', 'Ditolak')" class="flex-1 bg-rose-100 text-rose-600 py-3 rounded-xl text-[10px] font-black uppercase hover:bg-rose-200">Tolak</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function updateStatusIzin(id, status) {
+            const { error } = await sb.from('izin').update({ status: status }).eq('id', id);
+            if (!error) { alert("Status diperbarui!"); loadSemuaData(); }
+        }
+
+        function filterTabel() {
+            const input = document.getElementById("cari-nama").value.toUpperCase();
+            const tr = document.getElementById("body-absen").getElementsByTagName("tr");
+            for (let i = 0; i < tr.length; i++) {
+                let td = tr[i].getElementsByTagName("td")[0];
+                if (td) {
+                    let txtValue = td.textContent || td.innerText;
+                    tr[i].style.display = txtValue.toUpperCase().indexOf(input) > -1 ? "" : "none";
+                }
+            }
+        }
+
+        loadSemuaData();
+    </script>
+</body>
+</html>
