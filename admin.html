@@ -105,22 +105,4 @@
                         <td class="p-6 font-black text-slate-800">${row.pegawai ? row.pegawai.nama : 'Unknown'}</td>
                         <td class="p-6 text-center font-extrabold text-blue-600">${row.jam_masuk || '--:--'}</td>
                         <td class="p-6 text-center font-extrabold text-amber-600">${row.jam_keluar || '--:--'}</td>
-                        <td class="p-6 text-[10px] font-bold">
-                            <a href="https://www.google.com/maps?q=${row.lokasi_masuk}" target="_blank" class="text-blue-500 hover:underline">
-                                <i class="fa fa-map-marker-alt"></i> Lihat Lokasi
-                            </a>
-                        </td>
-                    </tr>
-                `).join('');
-
-            } catch (err) {
-                console.error(err);
-                alert("Gagal mengambil data: " + err.message);
-            }
-        }
-
-        // Panggil data saat halaman dibuka
-        fetchData();
-    </script>
-</body>
-</html>
+            
