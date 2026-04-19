@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Absensi Maumbi</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root { --primary: #4facfe; --secondary: #00f2fe; }
+        body { background: #f0f2f5; font-family: sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .app-card { width: 90%; max-width: 380px; background: white; border-radius: 30px; padding: 25px; text-align: center; box-shadow: 0 15px 35px rgba(0,0,0,0.1); }
+        .fingerprint-btn {
+            width: 130px; height: 130px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border: 8px solid #e0f7ff; display: flex; align-items: center; justify-content: center;
+            margin: 20px auto; cursor: pointer; transition: 0.3s; color: white; font-size: 55px; box-shadow: 0 8px 20px rgba(79, 172, 254, 0.4);
+        }
+        .disabled { background: #d1d1d1 !important; border-color: #eee !important; cursor: not-allowed; filter: grayscale(1); box-shadow: none !important; }
+        input { width: 100%; padding: 12px; border-radius: 12px; border: 1px solid #ddd; text-align: center; margin-bottom: 15px; }
+        .mode-switch { display: flex; gap: 10px; margin-bottom: 20px; }
+        .mode-btn { flex: 1; padding: 10px; border-radius: 10px; border: 1px solid #ddd; background: #f8f9fa; font-weight: bold; cursor: pointer; }
+        .active { background: var(--primary) !important; color: white !important; }
+        #locStatus { font-weight: bold; margin-bottom: 10px; display: block; }
+        .btn-radar { background: #ff9800; color: white; border: none; padding: 8px 15px; border-radius: 20px; font-weight: bold; cursor: pointer; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="app-card">
+    <h3>Maumbi Absensi</h3>
+    
+    <button id="btnStartGPS" class="btn-radar" onclick="initGPS()">🛰️ Klik Aktifkan Radar GPS</button>
+    
+    <div id="locStatus" style="color: #999;">Status: Radar Mati</div>
+
+    <input type="text" id="empCode" placeholder="Masukkan UUID">
+
+    <div class="mode-switch">
+        <button id="btnIn" class="mode-btn active" onclick="setMode('masuk')">MASUK</button>
+        <button id="btnOut" class="mode-btn" onclick="setMode('pulang')">PULANG</button>
+    </div>
+
+    <div id="fingerBtn" class="fingerprint-btn disabled" onclick="prosesAbsen()">
+        <i class="fa-solid fa-fingerprint"></i>
+    </div>
+    
+    <p id="statusLabel" style="font-size: 0.85rem; color: #666;">Klik tombol oranye di atas</p>
+</div>
+
+<script>
+    const SB_URL = "https://cvswzigomnpnllsgcqoc.supabase.co";
+    const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN2c3d6aWdvbW5wbmxsc2djcW9jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4ODMzMTMsImV4cCI6MjA5MTQ1OTMxM30.QZ-FVL2o100ncLh70v8yg0TmtiFo7hA2fxlyhdRw9OQ";
+    const supabase = window.supabase.createClient(SB_URL, SB_KEY);
+
+    const K_LAT = 1.475817; // GANTI KOORDINAT MAUMBI
+    const K_LNG = 124.922390; 
+    const RADIUS_MAKS = 150; 
+
+    let currentMode = 'masuk';
+    let userInside = false;
+
+    function setMode(m) {
+        currentMode = m;
+        document.getElementById('btnIn').classList.toggle('active', m === 'masuk');
+        document.getElementById('btnOut').classList.toggle('active', m === 'pulang');
+        updateUI();
+    }
+
+    function getDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371e3;
+        const dLat = (lat2-lat1) * Math.PI/180;
+        const dLon = (lon2-lon1) * Math.PI/180;
+        const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    // FUNGSI INI WAJIB DIKLIK USER
+    function initGPS() {
+        document.getElementById('btnStartGPS').style.display = 'none';
+        document.getElementById('locStatus').innerText = "🛰️ Mencari Sinyal...";
+        
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition((pos) => {
+                const dist = getDistance(pos.coords.latitude, pos.coords.longitude, K_LAT, K_LNG);
+                userInside = (dist <= RADIUS_MAKS);
+                
+                document.getElementById('locStatus').innerHTML = userInside ? 
+                    `<span style="color:green">✅ Lokasi Terdeteksi (${Math.round(dist)}m)</span>` : 
+                    `<span style="color:red">📍 Luar Area (${Math.round(dist)}m)</span>`;
+                
+                updateUI();
+            }, (err) => {
+                document.getElementById('locStatus').innerHTML = `<span style="color:red">Error: ${err.message}</span>`;
+            }, { 
+                enableHighAccuracy: true,
+                maximumAge: 30000,
+                timeout: 27000
+            });
+        }
+    }
+
+    function updateUI() {
+        const btn = document.getElementById('fingerBtn');
+        const label = document.getElementById('statusLabel');
+        const jam = new Date().getHours();
+
+        if (userInside) {
+            if (currentMode === 'masuk' && jam < 9) {
+                btn.classList.add('disabled');
+                label.innerText = "Absen Masuk Mulai Jam 09:00";
+            } else if (currentMode === 'pulang' && jam < 17) {
+                btn.classList.add('disabled');
+                label.innerText = "Absen Pulang Mulai Jam 17:00";
+            } else {
+                btn.classList.remove('disabled');
+                label.innerText = "Siap! Tekan Sidik Jari";
+            }
+        } else {
+            btn.classList.add('disabled');
+            label.innerText = "Masuk ke Area Kantor";
+        }
+    }
+
+    async function prosesAbsen() {
+        if (document.getElementById('fingerBtn').classList.contains('disabled')) return;
+        const code = document.getElementById('empCode').value;
+        if (!code) return Swal.fire("Isi UUID!", "", "warning");
+
+        Swal.fire({ title: 'Menyimpan...', didOpen: () => { Swal.showLoading(); }});
+
+        const now = new Date();
+        if (currentMode === 'masuk') {
+            const { error } = await supabase.from('attendance').insert([{ employee_code: code, status: 'Hadir', check_in: now }]);
+            error ? Swal.fire("Gagal", error.message, "error") : Swal.fire("Berhasil", "Selamat Bekerja", "success");
+        } else {
+            const { error } = await supabase.from('attendance').update({ check_out: now }).eq('employee_code', code).is('check_out', null);
+            error ? Swal.fire("Gagal", error.message, "error") : Swal.fire("Berhasil", "Hati-hati di jalan", "success");
+        }
+    }
+</script>
+</body>
+</html>
