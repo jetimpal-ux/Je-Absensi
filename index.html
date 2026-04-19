@@ -1,0 +1,304 @@
+import os
+
+# Menyiapkan konten HTML lengkap
+html_content = """<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Absensi Pro v3 - Laporan Bulanan</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .tab-active { border-bottom: 4px solid #2563eb; color: #2563eb; font-weight: 800; }
+        #reader { border: none !important; border-radius: 2rem; overflow: hidden; width: 100% !important; }
+        #reader__dashboard { display: none !important; }
+        video { border-radius: 2rem; object-fit: cover; }
+        .glass { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+
+    <nav class="fixed top-0 left-0 right-0 z-[999] bg-white border-b border-slate-200 shadow-sm">
+        <div class="max-w-6xl mx-auto flex">
+            <button onclick="showPage('scan')" id="btn-scan" class="flex-1 py-5 text-sm tab-active">📸 SCAN ABSEN</button>
+            <button onclick="showPage('admin')" id="btn-admin" class="flex-1 py-5 text-sm text-slate-400">📊 DASHBOARD</button>
+        </div>
+    </nav>
+
+    <div class="h-20"></div>
+
+    <section id="page-scan" class="max-w-md mx-auto p-6 space-y-6">
+        <div class="text-center space-y-2">
+            <h1 class="text-2xl font-extrabold tracking-tight italic text-blue-600">COCO-LOGISTICS</h1>
+            <div id="geo-status" class="inline-flex items-center gap-2 px-4 py-1.5 bg-slate-200 rounded-full text-[10px] font-bold text-slate-600 uppercase">
+                🟡 Mencari Sinyal GPS...
+            </div>
+        </div>
+        
+        <div class="shadow-2xl rounded-[2.5rem] bg-black p-1 border-4 border-white overflow-hidden">
+            <div id="reader"></div>
+        </div>
+
+        <div class="glass p-6 rounded-[2rem] border border-white shadow-lg space-y-4">
+            <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Form Izin Karyawan</h3>
+            <input type="text" id="izin-code" placeholder="Kode Karyawan (KRY...)" class="w-full p-4 bg-slate-100 rounded-2xl outline-none border-2 border-transparent focus:border-blue-500 transition-all">
+            <textarea id="izin-reason" rows="2" placeholder="Alasan izin..." class="w-full p-4 bg-slate-100 rounded-2xl outline-none border-2 border-transparent focus:border-blue-500 transition-all"></textarea>
+            <button onclick="submitIzin()" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold active:scale-95 transition">Kirim Izin</button>
+        </div>
+    </section>
+
+    <section id="page-admin" class="hidden max-w-6xl mx-auto p-6 space-y-6">
+        <div class="grid grid-cols-2 gap-4">
+            <div class="bg-white p-6 rounded-[2rem] shadow-sm text-center">
+                <p class="text-[10px] font-bold text-slate-400 uppercase">Hadir Hari Ini</p>
+                <h2 id="stat-present" class="text-3xl font-black text-blue-600">0</h2>
+            </div>
+            <div class="bg-white p-6 rounded-[2rem] shadow-sm border border-amber-100 text-center">
+                <p class="text-[10px] font-bold text-amber-500 uppercase">Izin Pending</p>
+                <h2 id="stat-leave" class="text-3xl font-black text-amber-500">0</h2>
+            </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-[2rem] shadow-sm">
+            <h3 class="font-bold mb-4 text-sm flex items-center gap-2">
+                <span class="w-2 h-4 bg-blue-600 rounded-full"></span> Statistik Mingguan
+            </h3>
+            <canvas id="attendanceChart" height="150"></canvas>
+        </div>
+
+        <div class="bg-white rounded-[2rem] shadow-sm overflow-hidden">
+            <div class="p-6 border-b space-y-4 bg-slate-50/50 text-center">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="font-bold text-slate-800">Laporan Absensi</span>
+                    <button onclick="loadData()" class="text-[10px] font-black text-blue-600 uppercase tracking-widest">Refresh</button>
+                </div>
+                
+                <div class="flex flex-col gap-3">
+                    <div class="flex gap-2">
+                        <input type="month" id="filter-month" class="flex-1 p-3 bg-white border border-slate-200 rounded-xl text-xs font-bold shadow-sm outline-none">
+                        <button onclick="generatePDF()" class="px-5 bg-emerald-600 text-white text-[10px] font-black rounded-xl shadow-lg uppercase tracking-wider active:scale-95 transition">
+                            Cetak PDF
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                    <tbody id="attendance-list" class="divide-y divide-slate-50">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        // --- 1. KONFIGURASI SUPABASE ---
+        // MASUKKAN URL & KEY SUPABASE ANDA DI SINI
+        const SB_URL = 'https://cvswzigomnpnllsgcqoc.supabase.co'; 
+        const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN2c3d6aWdvbW5wbmxsc2djcW9jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4ODMzMTMsImV4cCI6MjA5MTQ1OTMxM30.QZ-FVL2o100ncLh70v8yg0TmtiFo7hA2fxlyhdRw9OQ';
+        
+        // Atur titik koordinat kantor/gudang kelapa Anda
+        const OFFICE = { lat: 1.429042, lng: 125.122123 }; 
+        const RADIUS = 50; // Jarak toleransi dalam meter
+
+        const supabaseClient = supabase.createClient(SB_URL, SB_KEY);
+        let userPos = null;
+        let chartInstance = null;
+
+        // Set default filter bulan ke bulan berjalan
+        document.getElementById('filter-month').value = new Date().toISOString().slice(0, 7);
+
+        // --- 2. LOGIKA GPS ---
+        function initGPS() {
+            if (!navigator.geolocation) return;
+            navigator.geolocation.watchPosition(
+                (pos) => {
+                    userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                    const el = document.getElementById('geo-status');
+                    el.innerHTML = `🟢 GPS AKTIF (${Math.round(pos.coords.accuracy)}m)`;
+                    el.className = "inline-flex items-center gap-2 px-4 py-1.5 bg-emerald-100 rounded-full text-[10px] font-bold text-emerald-600 uppercase tracking-widest";
+                },
+                (err) => { console.warn("Sinyal GPS lemah", err) },
+                { enableHighAccuracy: false, timeout: 20000 }
+            );
+        }
+
+        // --- 3. NAVIGASI DENGAN PASSWORD ---
+        function showPage(page) {
+            if (page === 'admin') {
+                Swal.fire({
+                    title: 'Akses Admin',
+                    text: 'Gunakan Password untuk melihat dashboard',
+                    input: 'password',
+                    inputPlaceholder: 'Password...',
+                    showCancelButton: true,
+                    confirmButtonColor: '#2563eb'
+                }).then((res) => {
+                    if (res.value === '1234') { // GANTI PASSWORD ANDA DI SINI
+                        switchView('admin');
+                    } else if (res.isConfirmed) {
+                        Swal.fire('Error', 'Password Salah!', 'error');
+                    }
+                });
+            } else {
+                switchView('scan');
+            }
+        }
+
+        function switchView(page) {
+            document.getElementById('page-scan').classList.toggle('hidden', page !== 'scan');
+            document.getElementById('page-admin').classList.toggle('hidden', page !== 'admin');
+            document.getElementById('btn-scan').classList.toggle('tab-active', page === 'scan');
+            document.getElementById('btn-scan').classList.toggle('text-slate-400', page !== 'scan');
+            document.getElementById('btn-admin').classList.toggle('tab-active', page === 'admin');
+            document.getElementById('btn-admin').classList.toggle('text-slate-400', page !== 'admin');
+            if (page === 'admin') { loadData(); updateChart(); }
+        }
+
+        // --- 4. SCANNER & PROSES ABSEN ---
+        async function onScanSuccess(code) {
+            if (!userPos) return Swal.fire('GPS Belum Siap', 'Tunggu hingga signal hijau aktif', 'warning');
+            
+            const dist = getDistance(userPos.lat, userPos.lng, OFFICE.lat, OFFICE.lng);
+            if (dist > RADIUS) return Swal.fire('Di Luar Area', `Anda berada ${Math.round(dist)}m dari area gudang`, 'error');
+
+            Swal.fire({ title: 'Memverifikasi...', didOpen: () => Swal.showLoading() });
+
+            const { error } = await supabaseClient.from('attendance').insert([
+                { employee_code: code, lat: userPos.lat, lng: userPos.lng, is_on_site: true }
+            ]);
+
+            if (!error) {
+                new Audio('https://www.soundjay.com/buttons/beep-07a.mp3').play();
+                Swal.fire({ icon: 'success', title: 'Berhasil Absen!', showConfirmButton: false, timer: 1500 }).then(() => location.reload());
+            } else {
+                Swal.fire('Gagal', error.message, 'error');
+            }
+        }
+
+        // --- 5. CETAK PDF BULANAN ---
+        async function generatePDF() {
+            const selectedMonth = document.getElementById('filter-month').value;
+            const [year, month] = selectedMonth.split('-');
+            const startDate = `${selectedMonth}-01`;
+            const endDate = new Date(year, month, 0).toISOString().slice(0, 10);
+
+            const { data, error } = await supabaseClient
+                .from('attendance')
+                .select('*')
+                .gte('date', startDate)
+                .lte('date', endDate)
+                .order('date', { ascending: true });
+
+            if (error || !data || data.length === 0) return Swal.fire('Kosong', 'Tidak ada data di bulan ini', 'info');
+
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+
+            doc.setFontSize(16);
+            doc.text(`LAPORAN ABSENSI - ${selectedMonth}`, 14, 20);
+            doc.setFontSize(10);
+            doc.text(`Dicetak pada: ${new Date().toLocaleString('id-ID')}`, 14, 28);
+
+            const tableRows = data.map((d, i) => [
+                i + 1,
+                d.employee_code.toUpperCase(),
+                d.date,
+                new Date(d.check_in).toLocaleTimeString(),
+                d.is_on_site ? 'HADIR' : 'LUAR AREA'
+            ]);
+
+            doc.autoTable({
+                startY: 35,
+                head: [['No', 'ID Karyawan', 'Tanggal', 'Waktu', 'Status']],
+                body: tableRows,
+                headStyles: { fillColor: [37, 99, 235] },
+                theme: 'grid'
+            });
+
+            doc.save(`Laporan_Absen_${selectedMonth}.pdf`);
+            Swal.fire('Sukses', 'PDF sedang diunduh', 'success');
+        }
+
+        // --- 6. MANAJEMEN DATA DASHBOARD ---
+        async function loadData() {
+            const { data } = await supabaseClient.from('attendance').select('*').order('check_in', { ascending: false }).limit(20);
+            if (data) {
+                const today = new Date().toISOString().slice(0, 10);
+                document.getElementById('stat-present').innerText = data.filter(d => d.date === today).length;
+                
+                document.getElementById('attendance-list').innerHTML = data.map(i => `
+                    <tr class="hover:bg-slate-50 transition">
+                        <td class="p-4 font-bold text-xs uppercase text-slate-700">${i.employee_code}</td>
+                        <td class="p-4 text-[10px] text-slate-400">${new Date(i.check_in).toLocaleTimeString('id-ID')}</td>
+                        <td class="p-4 text-right">
+                            <button onclick="deleteLog('${i.id}')" class="text-red-400 text-[10px] font-bold uppercase hover:text-red-600">Hapus</button>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        }
+
+        async function deleteLog(id) {
+            const confirm = await Swal.fire({ title: 'Hapus log ini?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444' });
+            if (confirm.isConfirmed) {
+                await supabaseClient.from('attendance').delete().eq('id', id);
+                loadData(); updateChart();
+            }
+        }
+
+        async function updateChart() {
+            const { data } = await supabaseClient.rpc('get_weekly_attendance_stats');
+            if (!data) return;
+            if (chartInstance) chartInstance.destroy();
+            const ctx = document.getElementById('attendanceChart').getContext('2d');
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.map(d => d.day_name),
+                    datasets: [{ data: data.map(d => d.total_present), borderColor: '#2563eb', fill: true, backgroundColor: 'rgba(37, 99, 235, 0.05)', tension: 0.4 }]
+                },
+                options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+            });
+        }
+
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3;
+            const p1 = lat1 * Math.PI/180; const p2 = lat2 * Math.PI/180;
+            const dp = (lat2-lat1) * Math.PI/180; const dl = (lon2-lon1) * Math.PI/180;
+            const a = Math.sin(dp/2)**2 + Math.cos(p1)*Math.cos(p2) * Math.sin(dl/2)**2;
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+
+        async function submitIzin() {
+            const code = document.getElementById('izin-code').value;
+            const res = document.getElementById('izin-reason').value;
+            if(!code || !res) return Swal.fire('Peringatan', 'Mohon lengkapi kode dan alasan', 'warning');
+            const { error } = await supabaseClient.from('leave_requests').insert([{ employee_code: code, reason: res }]);
+            if (!error) { 
+                Swal.fire('Terkirim', 'Izin berhasil dicatat', 'success'); 
+                document.getElementById('izin-code').value = ''; 
+                document.getElementById('izin-reason').value = ''; 
+            }
+        }
+
+        // Jalankan GPS dan Scanner
+        initGPS();
+        const scanner = new Html5QrcodeScanner("reader", { fps: 15, qrbox: 250 });
+        scanner.render(onScanSuccess);
+    </script>
+</body>
+</html>"""
+
+print("File index.html telah dibuat.")
