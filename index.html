@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Akrilik Custom Maumbi - System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f8fafc; color: #1e293b; }
+        .btn-blue { background: #2563eb; color: white; font-weight: 800; box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.4); }
+        .btn-disabled { background: #cbd5e1 !important; color: #64748b !important; cursor: not-allowed; }
+        .nav-active { color: #2563eb; border-bottom: 4px solid #2563eb; font-weight: 800; }
+    </style>
+</head>
+<body class="pb-10">
+
+    <nav class="fixed top-0 left-0 right-0 z-[999] bg-white border-b shadow-sm flex text-center">
+        <button onclick="renderPage('absen')" id="nav-absen" class="flex-1 py-4 text-[10px] font-black uppercase nav-active tracking-widest">📲 Absen</button>
+        <button onclick="askAdmin()" id="nav-admin" class="flex-1 py-4 text-[10px] font-black uppercase text-slate-400 border-b-4 border-transparent tracking-widest">📊 Admin</button>
+    </nav>
+
+    <div class="h-20"></div>
+
+    <section id="page-absen" class="max-w-md mx-auto p-6 space-y-6">
+        <div class="text-center space-y-4">
+            <h1 id="display-nama-pt" class="text-2xl font-black italic text-blue-600 uppercase tracking-tighter italic">Akrilik Custom Maumbi</h1>
+            
+            <div id="status-card" class="p-5 rounded-[2rem] bg-white shadow-sm border border-slate-200">
+                <p id="st-title" class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Menghubungkan Database...</p>
+                <p id="st-dist" class="text-[9px] text-slate-400 mt-1 font-medium italic">Sinkronisasi lokasi kantor...</p>
+            </div>
+        </div>
+
+        <div class="bg-white p-8 rounded-[2.5rem] shadow-xl space-y-6">
+            <div class="space-y-1">
+                <label class="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">ID / UUID Karyawan</label>
+                <input type="text" id="emp-code" placeholder="Masukkan ID Anda" class="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none focus:ring-2 focus:ring-blue-500 font-bold text-center text-sm shadow-inner uppercase tracking-wider">
+            </div>
+            
+            <button id="btn-submit" onclick="submitAbsen()" disabled class="btn-disabled w-full py-5 rounded-2xl font-black text-lg uppercase tracking-widest shadow-lg">
+                Tunggu GPS...
+            </button>
+        </div>
+    </section>
+
+    <section id="page-admin" class="hidden max-w-4xl mx-auto p-6 space-y-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col justify-between">
+                <div>
+                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Manajemen Kantor</p>
+                    <p class="text-[9px] text-slate-400 mb-4 italic">Input Izin, Sakit, atau Cuti secara manual.</p>
+                </div>
+                <button onclick="inputIzinAdmin()" class="w-full py-4 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all">
+                    ➕ Input Manual / Izin
+                </button>
+            </div>
+
+            <div class="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Laporan</p>
+                <input type="month" id="rep-mo" class="w-full p-2 border border-slate-100 rounded-lg text-xs outline-none font-bold mb-3 bg-slate-50">
+                <button onclick="downloadPDF()" class="w-full py-3 bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95">
+                    📄 Download PDF
+                </button>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
+            <div class="p-5 border-b bg-slate-50 flex justify-between items-center">
+                <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Log Kehadiran</span>
+                <button onclick="loadData()" class="text-blue-600 text-[9px] font-black">🔄 REFRESH</button>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                    <tbody id="log-body" class="divide-y divide-slate-50"></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        // --- KONFIGURASI SUPABASE (WAJIB DIISI) ---
+        const SB_URL = 'https://cvswzigomnpnllsgcqoc.supabase.co'; 
+        const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN2c3d6aWdvbW5wbmxsc2djcW9jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4ODMzMTMsImV4cCI6MjA5MTQ1OTMxM30.QZ-FVL2o100ncLh70v8yg0TmtiFo7hA2fxlyhdRw9OQ';
+        
+        const supabaseClient = supabase.createClient(SB_URL, SB_KEY);
+        
+        let APP_CONFIG = { pt: 'Akrilik Custom Maumbi', lat: 1.429042, lng: 125.122123, rad: 50, pass: '1234' };
+        let userPos = null;
+
+        // 1. AMBIL SETTING (DENGAN REFRESH PAKSA)
+        async function loadSettings() {
+            const { data, error } = await supabaseClient.from('settings').select('*');
+            if (data) {
+                data.forEach(item => {
+                    const val = item.value.trim();
+                    if(item.key === 'nama_perusahaan') APP_CONFIG.pt = val;
+                    if(item.key === 'latitude_pusat') APP_CONFIG.lat = parseFloat(val);
+                    if(item.key === 'longitude_pusat') APP_CONFIG.lng = parseFloat(val);
+                    if(item.key === 'radius_absen') APP_CONFIG.rad = parseInt(val);
+                    if(item.key === 'password_admin') APP_CONFIG.pass = val;
+                });
+                
+                document.getElementById('display-nama-pt').innerText = APP_CONFIG.pt;
+                console.log("Setting Dimuat: ", APP_CONFIG);
+                startGPS(); // Jalankan GPS hanya setelah data kantor masuk
+            }
+        }
+
+        // 2. RUMUS JARAK AKURAT (HAVERSINE METER)
+        function calcDist(lat1, lon1, lat2, lon2) {
+            if (!lat1 || !lon1 || !lat2 || !lon2) return 999999;
+            const R = 6371000; // Meter
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        // 3. MONITOR GPS
+        function startGPS() {
+            if (!navigator.geolocation) return;
+            navigator.geolocation.watchPosition(pos => {
+                userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                
+                // Kalkulasi jarak ke koordinat kantor yang baru dari database
+                const dist = calcDist(userPos.lat, userPos.lng, APP_CONFIG.lat, APP_CONFIG.lng);
+                
+                const btn = document.getElementById('btn-submit');
+                const st = document.getElementById('st-title');
+                
+                document.getElementById('st-dist').innerText = `Jarak: ${Math.round(dist)} meter dari kantor`;
+                
+                if (dist <= APP_CONFIG.rad) {
+                    btn.disabled = false;
+                    btn.className = "btn-blue w-full py-5 rounded-2xl font-black text-lg uppercase tracking-widest";
+                    btn.innerText = "Absen Sekarang";
+                    st.innerText = "📍 LOKASI KANTOR TERVERIFIKASI";
+                    st.className = "text-[10px] font-black text-emerald-500 uppercase tracking-widest";
+                } else {
+                    btn.disabled = true;
+                    btn.className = "btn-disabled w-full py-5 rounded-2xl font-black text-lg uppercase tracking-widest";
+                    btn.innerText = "Diluar Radius";
+                    st.innerText = "DILUAR RADIUS KANTOR";
+                    st.className = "text-[10px] font-black text-red-400 uppercase tracking-widest";
+                }
+            }, null, { enableHighAccuracy: true, maximumAge: 0 });
+        }
+
+        // 4. AKSES ADMIN
+        async function askAdmin() {
+            const { value: p } = await Swal.fire({ title: 'Password Admin', input: 'password', showCancelButton: true });
+            if (p === APP_CONFIG.pass) renderPage('admin');
+            else if(p) Swal.fire('Salah', 'Password tidak cocok', 'error');
+        }
+
+        function renderPage(p) {
+            document.getElementById('page-absen').classList.toggle('hidden', p !== 'absen');
+            document.getElementById('page-admin').classList.toggle('hidden', p !== 'admin');
+            if(p === 'admin') loadData();
+        }
+
+        async function submitAbsen() {
+            const id = document.getElementById('emp-code').value.trim();
+            const { data: p } = await supabaseClient.from('pegawai').select('nama').eq('id', id).single();
+            if(!p) return Swal.fire('Gagal', 'ID tidak terdaftar', 'error');
+
+            const { error } = await supabaseClient.from('attendance').insert([{ 
+                employee_code: id, lat: userPos.lat, lng: userPos.lng, is_on_site: true, status: 'Hadir' 
+            }]);
+            
+            if(!error) {
+                Swal.fire('Berhasil', `Halo ${p.nama}, absen tercatat.`, 'success');
+                localStorage.setItem('karyawan_id', id);
+            }
+        }
+
+        async function loadData() {
+            const { data } = await supabaseClient.from('attendance').select('*').order('check_in', { ascending: false }).limit(15);
+            if(data) {
+                document.getElementById('log-body').innerHTML = data.map(d => `
+                    <tr>
+                        <td class="p-4 font-black text-[10px] uppercase text-slate-600">${d.employee_code.substring(0,8)}...</td>
+                        <td class="p-4"><span class="px-2 py-1 rounded-full text-[8px] font-black uppercase ${d.status === 'Hadir' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}">${d.status || 'Hadir'}</span></td>
+                        <td class="p-4 text-right text-[10px] text-slate-400 font-bold">${new Date(d.check_in).toLocaleTimeString('id-ID')}</td>
+                    </tr>
+                `).join('');
+            }
+        }
+
+        async function inputIzinAdmin() {
+            const { value: id } = await Swal.fire({ title: 'Input UUID Karyawan', input: 'text', showCancelButton: true });
+            if (!id) return;
+            const { value: st } = await Swal.fire({
+                title: 'Pilih Status',
+                input: 'select',
+                inputOptions: { 'Hadir': 'Hadir (Manual)', 'Sakit': 'Sakit', 'Izin': 'Izin', 'Cuti': 'Cuti' }
+            });
+            if (st) {
+                await supabaseClient.from('attendance').insert([{ employee_code: id, is_on_site: true, status: st }]);
+                Swal.fire('Sukses', 'Data izin disimpan', 'success');
+                loadData();
+            }
+        }
+
+        async function downloadPDF() {
+            const mo = document.getElementById('rep-mo').value;
+            const { data } = await supabaseClient.from('attendance').select('*').gte('date', `${mo}-01`).lte('date', `${mo}-31`);
+            const doc = new jspdf.jsPDF();
+            doc.text(`LAPORAN ABSENSI - ${APP_CONFIG.pt}`, 14, 20);
+            doc.autoTable({
+                startY: 25,
+                head: [['No', 'ID', 'Tanggal', 'Status']],
+                body: data.map((d, i) => [i+1, d.employee_code.substring(0,8), d.date, d.status || 'Hadir'])
+            });
+            doc.save(`Laporan_${mo}.pdf`);
+        }
+
+        window.onload = () => {
+            const saved = localStorage.getItem('karyawan_id');
+            if(saved) document.getElementById('emp-code').value = saved;
+            loadSettings();
+        };
+    </script>
+</body>
+</html>
