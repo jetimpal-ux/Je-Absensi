@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Absensi Maumbi</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #f4f7f6; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+        .absensi-card { width: 100%; max-width: 400px; padding: 25px; background: white; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        .btn-absen { height: 55px; font-weight: bold; border-radius: 12px; margin-top: 10px; }
+        .location-box { font-size: 0.85rem; background: #eef2f3; padding: 10px; border-radius: 10px; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+
+<div class="absensi-card text-center">
+    <h4 class="mb-3">Akrilik Custom Maumbi</h4>
+    
+    <div class="location-box text-muted" id="locInfo">
+        Mencari lokasi...
+    </div>
+
+    <input type="text" id="empCode" class="form-control mb-3 text-center" placeholder="Masukkan UUID Anda">
+
+    <button onclick="prosesAbsen('masuk')" id="btnMasuk" class="btn btn-primary w-100 btn-absen" disabled>
+        ABSEN MASUK
+    </button>
+
+    <button onclick="prosesAbsen('pulang')" id="btnPulang" class="btn btn-outline-danger w-100 btn-absen" disabled>
+        ABSEN PULANG
+    </button>
+</div>
+
+<script>
+    // --- KONFIGURASI SUPABASE ---
+    const SB_URL = "https://cvswzigomnpnllsgcqoc.supabase.co";
+    const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN2c3d6aWdvbW5wbmxsc2djcW9jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4ODMzMTMsImV4cCI6MjA5MTQ1OTMxM30.QZ-FVL2o100ncLh70v8yg0TmtiFo7hA2fxlyhdRw9OQ";
+    const supabase = window.supabase.createClient(SB_URL, SB_KEY);
+
+    let userLat, userLng;
+    let kantorLat, kantorLng, radius;
+
+    // 1. Ambil Pengaturan Lokasi Kantor dari Database
+    async function getSettings() {
+        const { data } = await supabase.from('settings').select('*');
+        data.forEach(s => {
+            if(s.key === 'latitude_pusat') kantorLat = parseFloat(s.value);
+            if(s.key === 'longitude_pusat') kantorLng = parseFloat(s.value);
+            if(s.key === 'radius_absen') radius = parseFloat(s.value);
+        });
+        cekLokasi();
+    }
+
+    // 2. Cek Posisi Pegawai
+    function cekLokasi() {
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(pos => {
+                userLat = pos.coords.latitude;
+                userLng = pos.coords.longitude;
+                
+                const jarak = hitungJarak(userLat, userLng, kantorLat, kantorLng);
+                const info = document.getElementById('locInfo');
+                
+                if (jarak <= radius) {
+                    info.innerHTML = `<b class="text-success">Anda di Lokasi (${Math.round(jarak)}m)</b>`;
+                    document.getElementById('btnMasuk').disabled = false;
+                    document.getElementById('btnPulang').disabled = false;
+                } else {
+                    info.innerHTML = `<b class="text-danger">Di Luar Radius (${Math.round(jarak)}m)</b>`;
+                    document.getElementById('btnMasuk').disabled = true;
+                    document.getElementById('btnPulang').disabled = true;
+                }
+            });
+        }
+    }
+
+    // Rumus hitung jarak GPS
+    function hitungJarak(lat1, lon1, lat2, lon2) {
+        const R = 6371e3;
+        const φ1 = lat1 * Math.PI/180;
+        const φ2 = lat2 * Math.PI/180;
+        const Δφ = (lat2-lat1) * Math.PI/180;
+        const Δλ = (lon2-lon1) * Math.PI/180;
+        const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    // 3. Proses Absen (Masuk atau Pulang)
+    async function prosesAbsen(tipe) {
+        const code = document.getElementById('empCode').value;
+        if(!code) return Swal.fire("Error", "Isi UUID Anda", "error");
+
+        if (tipe === 'masuk') {
+            const { error } = await supabase.from('attendance').insert([
+                { employee_code: code, status: 'Hadir', is_on_site: true, check_in: new Date() }
+            ]);
+            if(error) Swal.fire("Gagal", error.message, "error");
+            else Swal.fire("Berhasil", "Selamat Bekerja!", "success");
+        } else {
+            // Absen Pulang: Cari data masuk hari ini yang belum ada jam pulangnya
+            const { error } = await supabase.from('attendance')
+                .update({ check_out: new Date() })
+                .eq('employee_code', code)
+                .is('check_out', null);
+            
+            if(error) Swal.fire("Gagal", error.message, "error");
+            else Swal.fire("Berhasil", "Hati-hati di jalan!", "success");
+        }
+    }
+
+    getSettings();
+</script>
+</body>
+</html>
