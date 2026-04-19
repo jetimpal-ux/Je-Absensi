@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Maumbi</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #f8f9fa; padding: 15px; }
+        .card { border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .btn-dl { background: #ff5e62; color: white; border: none; }
+    </style>
+</head>
+<body>
+
+<div class="container card p-4 mt-3">
+    <h4 class="text-center mb-4">Dashboard Admin Maumbi</h4>
+    
+    <div class="d-flex justify-content-between mb-3">
+        <button onclick="location.reload()" class="btn btn-primary btn-sm">Refresh</button>
+        <button onclick="unduhPDF()" class="btn btn-dl btn-sm">Download PDF</button>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-sm">
+            <thead class="table-light">
+                <tr>
+                    <th>Nama</th>
+                    <th>Waktu</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="listAbsen">
+                <tr><td colspan="3" class="text-center py-4">Memuat data...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    // MASUKKAN DATA ANDA DI SINI (JANGAN SAMPAI ADA SPASI SALAH)
+    const SB_URL = "https://cvswzigomnpnllsgcqoc.supabase.co";
+    const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN2c3d6aWdvbW5wbmxsc2djcW9jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4ODMzMTMsImV4cCI6MjA5MTQ1OTMxM30.QZ-FVL2o100ncLh70v8yg0TmtiFo7hA2fxlyhdRw9OQ";
+    const client = window.supabase.createClient(SB_URL, SB_KEY);
+
+    let dataMaster = [];
+
+    async function loadData() {
+        try {
+            // 1. Ambil Karyawan
+            const { data: emps, error: err1 } = await client.from('employees').select('employee_code, name');
+            if (err1) throw err1;
+
+            // 2. Ambil Absensi
+            const { data: atts, error: err2 } = await client.from('attendance').select('*').order('check_in', { ascending: false });
+            if (err2) throw err2;
+
+            // 3. Gabungkan
+            dataMaster = atts.map(a => {
+                const e = emps.find(x => x.employee_code === a.employee_code);
+                return { ...a, nama: e ? e.name : 'User-' + a.employee_code.substring(0,4) };
+            });
+
+            tampilData();
+        } catch (e) {
+            document.getElementById('listAbsen').innerHTML = `<tr><td colspan="3" class="text-center text-danger">Gagal: ${e.message}</td></tr>`;
+        }
+    }
+
+    function tampilData() {
+        const t = document.getElementById('listAbsen');
+        if (dataMaster.length === 0) {
+            t.innerHTML = '<tr><td colspan="3" class="text-center">Belum ada absen</td></tr>';
+            return;
+        }
+        t.innerHTML = dataMaster.map(d => `
+            <tr>
+                <td><b>${d.nama}</b></td>
+                <td>${new Date(d.check_in).toLocaleTimeString('id-ID')}</td>
+                <td><span class="badge ${d.status === 'Hadir' ? 'bg-success' : 'bg-warning'}">${d.status}</span></td>
+            </tr>
+        `).join('');
+    }
+
+    function unduhPDF() {
+        if (dataMaster.length === 0) return Swal.fire("Kosong", "Data belum dimuat", "info");
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        doc.text("Laporan Absensi Maumbi", 14, 15);
+        doc.autoTable({
+            head: [['Nama', 'Waktu', 'Status']],
+            body: dataMaster.map(x => [x.nama, new Date(x.check_in).toLocaleString('id-ID'), x.status]),
+            startY: 22
+        });
+        doc.save("laporan.pdf");
+    }
+
+    loadData();
+</script>
+</body>
+</html>
