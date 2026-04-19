@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Absensi Maumbi</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root { --p: #4facfe; --s: #00f2fe; }
+        body { background: #f0f2f5; font-family: sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .card { width: 90%; max-width: 380px; background: white; border-radius: 25px; padding: 25px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+        .gps-status { background: #fff5e6; padding: 10px; border-radius: 12px; margin-bottom: 15px; font-weight: bold; }
+        input { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #ddd; text-align: center; margin-bottom: 15px; }
+        .mode-box { display: flex; gap: 10px; margin-bottom: 20px; }
+        .m-btn { flex: 1; padding: 12px; border-radius: 10px; border: 1px solid #ddd; background: #f8f9fa; font-weight: bold; cursor: pointer; }
+        .active { background: var(--p) !important; color: white !important; }
+        .btn-absen {
+            width: 120px; height: 120px; border-radius: 50%; background: linear-gradient(135deg, var(--p), var(--s));
+            display: flex; align-items: center; justify-content: center; margin: 0 auto 10px; 
+            cursor: pointer; color: white; font-size: 50px; transition: 0.3s;
+        }
+        .off { background: #ccc !important; cursor: not-allowed; filter: grayscale(1); opacity: 0.5; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h3>Maumbi Absensi</h3>
+    <div id="displayGps" class="gps-status" style="color: orange;">🛰️ Menunggu Sinyal...</div>
+
+    <input type="text" id="uuid" placeholder="Masukkan UUID">
+
+    <div class="mode-box">
+        <button id="in" class="m-btn active" onclick="chMode('masuk')">MASUK</button>
+        <button id="out" class="m-btn" onclick="chMode('pulang')">PULANG</button>
+    </div>
+
+    <div id="btnMain" class="btn-absen off" onclick="doAbsen()">
+        <i class="fa-solid fa-fingerprint"></i>
+    </div>
+    
+    <p id="info" style="font-size: 0.8rem; color: #666;">Deteksi Lokasi...</p>
+</div>
+
+<script>
+    const URL = "https://cvswzigomnpnllsgcqoc.supabase.co";
+    const KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN2c3d6aWdvbW5wbmxsc2djcW9jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4ODMzMTMsImV4cCI6MjA5MTQ1OTMxM30.QZ-FVL2o100ncLh70v8yg0TmtiFo7hA2fxlyhdRw9OQ";
+    const sb = window.supabase.createClient(URL, KEY);
+
+    // Koordinat Maumbi Bapak
+    const TARGET = { lat: 1.475817, lng: 124.922390, rad: 150 };
+    let mode = 'masuk';
+    let isOk = false;
+
+    function chMode(m) {
+        mode = m;
+        document.getElementById('in').classList.toggle('active', m === 'masuk');
+        document.getElementById('out').classList.toggle('active', m === 'pulang');
+        checkRule();
+    }
+
+    // GPS LOGIC PALING STABIL (TANPA TIMEOUT)
+    if (navigator.geolocation) {
+        navigator.geolocation.watchPosition((p) => {
+            const lat1 = p.coords.latitude;
+            const lon1 = p.coords.longitude;
+            const lat2 = TARGET.lat;
+            const lon2 = TARGET.lng;
+
+            const R = 6371e3;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+            const dist = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+            isOk = (dist <= TARGET.rad);
+            document.getElementById('displayGps').innerHTML = isOk ? 
+                `<span style="color:green">✅ Lokasi Sesuai (${Math.round(dist)}m)</span>` : 
+                `<span style="color:red">📍 Luar Radius (${Math.round(dist)}m)</span>`;
+            checkRule();
+        }, (e) => {
+            document.getElementById('displayGps').innerText = "GPS Error/Izin Ditolak";
+        }, { enableHighAccuracy: true });
+    }
+
+    function checkRule() {
+        const btn = document.getElementById('btnMain');
+        const txt = document.getElementById('info');
+        const jam = new Date().getHours();
+
+        if (isOk) {
+            if (mode === 'masuk' && jam < 9) {
+                btn.classList.add('off');
+                txt.innerText = "Belum Jam 09:00";
+            } else if (mode === 'pulang' && jam < 17) {
+                btn.classList.add('off');
+                txt.innerText = "Belum Jam 17:00";
+            } else {
+                btn.classList.remove('off');
+                txt.innerText = "Siap Absen";
+            }
+        } else {
+            btn.classList.add('off');
+            txt.innerText = "Silakan Masuk Area Kantor";
+        }
+    }
+
+    async function doAbsen() {
+        if (document.getElementById('btnMain').classList.contains('off')) return;
+        const uid = document.getElementById('uuid').value;
+        if (!uid) return Swal.fire("Isi UUID!", "", "warning");
+
+        Swal.fire({title: 'Proses...', didOpen: () => Swal.showLoading()});
+
+        if (mode === 'masuk') {
+            const { error } = await sb.from('attendance').insert([{ employee_code: uid, status: 'Hadir', check_in: new Date() }]);
+            error ? Swal.fire("Gagal", error.message, "error") : Swal.fire("Berhasil", "Absen Masuk!", "success");
+        } else {
+            const { error } = await sb.from('attendance').update({ check_out: new Date() }).eq('employee_code', uid).is('check_out', null);
+            error ? Swal.fire("Gagal", error.message, "error") : Swal.fire("Berhasil", "Absen Pulang!", "success");
+        }
+    }
+</script>
+</body>
+</html>
