@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Absensi Maumbi</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root { --primary: #4facfe; --secondary: #00f2fe; }
+        body { background: #f0f2f5; font-family: sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .app-card { width: 90%; max-width: 380px; background: white; border-radius: 30px; padding: 25px; text-align: center; box-shadow: 0 15px 35px rgba(0,0,0,0.1); }
+        .fingerprint-btn {
+            width: 120px; height: 120px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border: 8px solid #e0f7ff; display: flex; align-items: center; justify-content: center;
+            margin: 20px auto; cursor: pointer; transition: 0.3s; color: white; font-size: 50px;
+        }
+        .disabled { background: #ccc !important; border-color: #eee !important; cursor: not-allowed; filter: grayscale(1); }
+        input { width: 100%; padding: 12px; border-radius: 12px; border: 1px solid #ddd; text-align: center; margin-bottom: 15px; }
+        .mode-switch { display: flex; gap: 10px; margin-bottom: 20px; }
+        .mode-btn { flex: 1; padding: 10px; border-radius: 10px; border: 1px solid #ddd; background: #f8f9fa; font-weight: bold; cursor: pointer; }
+        .active { background: var(--primary) !important; color: white !important; }
+    </style>
+</head>
+<body>
+
+<div class="app-card">
+    <h3>Maumbi Absensi</h3>
+    <div id="locInfo" style="padding: 10px; font-weight: bold; color: orange;">🛰️ Mencari Lokasi...</div>
+
+    <input type="text" id="empCode" placeholder="Masukkan UUID">
+
+    <div class="mode-switch">
+        <button id="btnIn" class="mode-btn active" onclick="setMode('masuk')">MASUK</button>
+        <button id="btnOut" class="mode-btn" onclick="setMode('pulang')">PULANG</button>
+    </div>
+
+    <div id="fingerBtn" class="fingerprint-btn disabled" onclick="prosesAbsen()">
+        <i class="fa-solid fa-fingerprint"></i>
+    </div>
+    
+    <p id="statusLabel" style="font-size: 0.85rem; color: #666;">Tunggu GPS Akurat...</p>
+</div>
+
+<script>
+    // --- SETUP WAJIB ---
+    const SB_URL = "https://cvswzigomnpnllsgcqoc.supabase.co";
+    const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN2c3d6aWdvbW5wbmxsc2djcW9jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4ODMzMTMsImV4cCI6MjA5MTQ1OTMxM30.QZ-FVL2o100ncLh70v8yg0TmtiFo7hA2fxlyhdRw9OQ";
+    const supabase = window.supabase.createClient(SB_URL, SB_KEY);
+
+    const K_LAT = 1.475817; // GANTI KOORDINAT MAUMBI
+    const K_LNG = 124.922390; 
+    const RADIUS_MAKS = 150; 
+
+    let currentMode = 'masuk';
+    let userInside = false;
+
+    function setMode(m) {
+        currentMode = m;
+        document.getElementById('btnIn').classList.toggle('active', m === 'masuk');
+        document.getElementById('btnOut').classList.toggle('active', m === 'pulang');
+        updateUI();
+    }
+
+    // --- LOGIKA GPS LANGSUNG JALAN ---
+    if (navigator.geolocation) {
+        navigator.geolocation.watchPosition((pos) => {
+            // Hitung Jarak (Haversine)
+            const R = 6371e3;
+            const dLat = (K_LAT - pos.coords.latitude) * Math.PI/180;
+            const dLon = (K_LNG - pos.coords.longitude) * Math.PI/180;
+            const a = Math.sin(dLat/2)**2 + Math.cos(pos.coords.latitude*Math.PI/180)*Math.cos(K_LAT*Math.PI/180)*Math.sin(dLon/2)**2;
+            const dist = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+            userInside = (dist <= RADIUS_MAKS);
+            document.getElementById('locInfo').innerHTML = userInside ? 
+                `<span style="color:green">✅ Di Lokasi (${Math.round(dist)}m)</span>` : 
+                `<span style="color:red">📍 Luar Radius (${Math.round(dist)}m)</span>`;
+            updateUI();
+        }, (err) => {
+            document.getElementById('locInfo').innerText = "GPS Error: " + err.message;
+        }, { enableHighAccuracy: true });
+    }
+
+    function updateUI() {
+        const btn = document.getElementById('fingerBtn');
+        const label = document.getElementById('statusLabel');
+        const jam = new Date().getHours();
+
+        if (userInside) {
+            if (currentMode === 'masuk' && jam < 9) {
+                btn.classList.add('disabled');
+                label.innerText = "Belum jam 09:00";
+            } else if (currentMode === 'pulang' && jam < 17) {
+                btn.classList.add('disabled');
+                label.innerText = "Belum jam 17:00";
+            } else {
+                btn.classList.remove('disabled');
+                label.innerText = "Tekan Sidik Jari untuk Absen";
+            }
+        } else {
+            btn.classList.add('disabled');
+            label.innerText = "Masuk ke area kantor";
+        }
+    }
+
+    async function prosesAbsen() {
+        if (document.getElementById('fingerBtn').classList.contains('disabled')) return;
+        const code = document.getElementById('empCode').value;
+        if (!code) return Swal.fire("Isi UUID!", "", "warning");
+
+        Swal.fire({ title: 'Menyimpan...', didOpen: () => { Swal.showLoading(); }});
+
+        if (currentMode === 'masuk') {
+            const { error } = await supabase.from('attendance').insert([{ employee_code: code, status: 'Hadir', check_in: new Date() }]);
+            error ? Swal.fire("Gagal", error.message, "error") : Swal.fire("Berhasil", "Selamat Bekerja", "success");
+        } else {
+            const { error } = await supabase.from('attendance').update({ check_out: new Date() }).eq('employee_code', code).is('check_out', null);
+            error ? Swal.fire("Gagal", error.message, "error") : Swal.fire("Berhasil", "Hati-hati di jalan", "success");
+        }
+    }
+</script>
+</body>
+</html>
