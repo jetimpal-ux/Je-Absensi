@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Absensi test - Final</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f1f5f9; }
+        .btn-blue { background: #2563eb; color: white; font-weight: 800; }
+        .btn-disabled { background: #cbd5e1 !important; color: #94a3b8 !important; cursor: not-allowed; }
+    </style>
+</head>
+<body class="pb-10">
+
+    <nav class="fixed top-0 left-0 right-0 z-[999] bg-white border-b shadow-sm flex">
+        <button onclick="renderPage('absen')" id="nav-absen" class="flex-1 py-4 text-[10px] font-black uppercase border-b-4 border-blue-600 text-blue-600">📲 Absen</button>
+        <button onclick="askAdmin()" id="nav-admin" class="flex-1 py-4 text-[10px] font-black uppercase border-b-4 border-transparent text-slate-400">📊 Admin</button>
+    </nav>
+
+    <div class="h-20"></div>
+
+    <section id="page-absen" class="max-w-md mx-auto p-6 space-y-6">
+        <div class="text-center">
+            <h1 class="text-2xl font-black italic text-blue-600">TEST-ABSENSI</h1>
+            <div id="gps-card" class="mt-4 p-4 bg-white rounded-2xl border border-slate-200 shadow-sm">
+                <p id="st-title" class="text-[10px] font-black text-slate-400 uppercase">Mencari GPS...</p>
+                <p id="st-dist" class="text-[9px] text-slate-400 mt-1 italic">Izin lokasi diperlukan</p>
+            </div>
+        </div>
+
+        <div class="bg-white p-8 rounded-[2.5rem] shadow-xl space-y-5">
+            <input type="text" id="emp-code" placeholder="Scan / Tempel ID" class="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none focus:ring-2 focus:ring-blue-500 font-bold text-center text-sm shadow-inner">
+            <button id="btn-submit" onclick="submitAbsen()" disabled class="btn-disabled w-full py-5 rounded-2xl font-black text-lg uppercase shadow-lg">Absen Sekarang</button>
+        </div>
+    </section>
+
+    <section id="page-admin" class="hidden max-w-4xl mx-auto p-6 space-y-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
+                <p class="text-[10px] font-bold text-slate-400 uppercase">Laporan Bulanan</p>
+                <input type="month" id="rep-mo" class="w-full p-2 mt-2 border rounded-lg text-xs outline-none">
+                <button onclick="downloadLaporan()" class="w-full mt-2 py-2 bg-emerald-600 text-white rounded-lg text-[10px] font-black uppercase">Download PDF</button>
+            </div>
+            <div class="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
+                <button onclick="manualInput()" class="w-full h-full py-4 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase">➕ Absen Manual</button>
+            </div>
+        </div>
+        <div class="bg-white rounded-[2rem] shadow-sm overflow-hidden border border-slate-100">
+            <table class="w-full text-left text-sm"><tbody id="log-body" class="divide-y divide-slate-50"></tbody></table>
+        </div>
+    </section>
+
+    <script>
+        const SB_URL = 'https://cvswzigomnpnllsgcqoc.supabase.co'; 
+        const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN2c3d6aWdvbW5wbmxsc2djcW9jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4ODMzMTMsImV4cCI6MjA5MTQ1OTMxM30.QZ-FVL2o100ncLh70v8yg0TmtiFo7hA2fxlyhdRw9OQ';
+        const GUDANG = { lat: 1.429042, lng: 125.122123 }; // <--- GANTI INI
+        const JARAK_MAX = 50;
+
+        const supabaseClient = supabase.createClient(SB_URL, SB_KEY);
+        let userPos = null;
+
+        // --- GPS LOGIC ---
+        function startGPS() {
+            if (!navigator.geolocation) {
+                document.getElementById('st-title').innerText = "GPS TIDAK DIDUKUNG";
+                return;
+            }
+            navigator.geolocation.watchPosition(pos => {
+                userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                const d = calcDist(userPos.lat, userPos.lng, GUDANG.lat, GUDANG.lng);
+                document.getElementById('st-dist').innerText = `Jarak: ${Math.round(d)} meter dari gudang`;
+                
+                const btn = document.getElementById('btn-submit');
+                if (d <= JARAK_MAX) {
+                    btn.disabled = false; btn.classList.remove('btn-disabled'); btn.classList.add('btn-blue');
+                    document.getElementById('st-title').innerText = "📍 LOKASI COCOK";
+                    document.getElementById('st-title').className = "text-[10px] font-black text-emerald-500 uppercase";
+                } else {
+                    btn.disabled = true; btn.classList.add('btn-disabled'); btn.classList.remove('btn-blue');
+                    document.getElementById('st-title').innerText = "DILUAR RADIUS";
+                    document.getElementById('st-title').className = "text-[10px] font-black text-red-500 uppercase";
+                }
+            }, err => {
+                document.getElementById('st-title').innerText = "IZIN GPS DITOLAK";
+            }, { enableHighAccuracy: true });
+        }
+
+        // --- NAVIGASI & ADMIN ---
+        async function askAdmin() {
+            const { value: p } = await Swal.fire({ title: 'Password Admin', input: 'password', showCancelButton: true });
+            if (p === '1234') renderPage('admin');
+            else if (p) Swal.fire('Salah!', '', 'error');
+        }
+
+        function renderPage(p) {
+            document.getElementById('page-absen').classList.toggle('hidden', p !== 'absen');
+            document.getElementById('page-admin').classList.toggle('hidden', p !== 'admin');
+            document.getElementById('nav-absen').className = `flex-1 py-4 text-[10px] font-black uppercase border-b-4 ${p==='absen'?'border-blue-600 text-blue-600':'border-transparent text-slate-400'}`;
+            document.getElementById('nav-admin').className = `flex-1 py-4 text-[10px] font-black uppercase border-b-4 ${p==='admin'?'border-blue-600 text-blue-600':'border-transparent text-slate-400'}`;
+            if(p === 'admin') loadData();
+        }
+
+        // --- ACTIONS ---
+        async function submitAbsen() {
+            const id = document.getElementById('emp-code').value.trim();
+            if(!id) return Swal.fire('ID Kosong', '', 'warning');
+            
+            // Validasi ke tabel pegawai
+            const { data: p } = await supabaseClient.from('pegawai').select('nama').eq('id', id).single();
+            if(!p) return Swal.fire('ID Tidak Terdaftar', '', 'error');
+
+            const { error } = await supabaseClient.from('attendance').insert([{ employee_code: id, lat: userPos.lat, lng: userPos.lng, is_on_site: true }]);
+            if(!error) {
+                Swal.fire('Berhasil!', `Halo ${p.nama}, absen dicatat.`, 'success');
+                localStorage.setItem('karyawan_id', id);
+            }
+        }
+
+        async function loadData() {
+            const { data } = await supabaseClient.from('attendance').select('*').order('check_in', { ascending: false }).limit(20);
+            if(data) {
+                document.getElementById('log-body').innerHTML = data.map(d => `
+                    <tr><td class="p-4 font-bold text-xs">${d.employee_code.slice(0,8)}...</td><td class="p-4 text-right text-[10px] text-slate-400">${new Date(d.check_in).toLocaleTimeString()}</td></tr>
+                `).join('');
+            }
+        }
+
+        function calcDist(l1, n1, l2, n2) {
+            const R = 6371e3; const p1 = l1*Math.PI/180; const p2 = l2*Math.PI/180;
+            const dL = (l2-l1)*Math.PI/180; const dN = (n2-n1)*Math.PI/180;
+            const a = Math.sin(dL/2)**2 + Math.cos(p1)*Math.cos(p2) * Math.sin(dN/2)**2;
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+
+        window.onload = () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            if(urlParams.get('id')) document.getElementById('emp-code').value = urlParams.get('id');
+            else if(localStorage.getItem('karyawan_id')) document.getElementById('emp-code').value = localStorage.getItem('karyawan_id');
+            startGPS();
+        };
+    </script>
+</body>
+</html>
