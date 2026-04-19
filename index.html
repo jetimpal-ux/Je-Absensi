@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AbsenFlow Pro - Pegawai</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8fafc; }
+        .page { display: none; padding-bottom: 100px; }
+        .page.active { display: block; animation: fadeIn 0.3s ease; }
+        .bottom-nav { position: fixed; bottom: 0; width: 100%; max-width: 448px; background: white; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-around; padding: 15px; z-index: 50; border-radius: 25px 25px 0 0; box-shadow: 0 -5px 15px rgba(0,0,0,0.05); }
+        .btn-absen { width: 160px; height: 160px; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 15px 30px rgba(37, 99, 235, 0.3); transition: all 0.3s; border: 8px solid white; }
+        .btn-absen:disabled { background: #cbd5e1; box-shadow: none; border-color: #f1f5f9; cursor: not-allowed; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="flex justify-center">
+
+    <div class="w-full max-w-md bg-white min-h-screen shadow-2xl relative overflow-x-hidden">
+        
+        <header id="main-header" class="p-6 flex items-center justify-between bg-blue-600 text-white rounded-b-[2.5rem] shadow-lg hidden">
+            <div>
+                <p class="text-[10px] font-bold opacity-80 uppercase tracking-widest">Pegawai Aktif</p>
+                <h2 id="user-display-name" class="text-lg font-extrabold tracking-tight">Nama Pegawai</h2>
+            </div>
+            <div class="w-12 h-12 bg-blue-500 rounded-2xl border-2 border-white flex items-center justify-center text-xl font-black">
+                <i class="fa fa-user"></i>
+            </div>
+        </header>
+
+        <div id="page-login" class="page active p-8 pt-20 text-center">
+            <div class="w-20 h-20 bg-blue-600 rounded-3xl mx-auto flex items-center justify-center text-white text-3xl mb-4 shadow-xl italic font-black">AF</div>
+            <h1 class="text-2xl font-black text-slate-800 tracking-tighter uppercase italic mb-10">AbsenFlow <span class="text-blue-600">Pro</span></h1>
+            
+            <div class="space-y-4 text-left">
+                <div class="relative">
+                    <i class="fa fa-phone absolute left-4 top-4 text-slate-400"></i>
+                    <input type="text" id="login-hp" placeholder="Nomor HP" class="w-full p-4 pl-12 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold">
+                </div>
+                <div class="relative">
+                    <i class="fa fa-lock absolute left-4 top-4 text-slate-400"></i>
+                    <input type="password" id="login-pass" placeholder="Password" class="w-full p-4 pl-12 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <button onclick="handleLogin()" class="w-full bg-blue-600 text-white py-4 rounded-2xl font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all">Login Pegawai</button>
+            </div>
+        </div>
+
+        <div id="page-home" class="page p-6">
+            <div id="gps-box" class="bg-slate-50 p-4 rounded-2xl border border-slate-200 mb-8 flex items-center gap-4 transition-all">
+                <div id="gps-icon" class="text-amber-500 text-xl"><i class="fa fa-location-crosshairs fa-spin"></i></div>
+                <div>
+                    <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">GPS Tracker</p>
+                    <p id="gps-text" class="text-xs font-bold text-slate-600">Mencari sinyal satelit...</p>
+                </div>
+            </div>
+
+            <div class="text-center py-6">
+                <h1 id="live-clock" class="text-5xl font-black text-slate-800 tracking-tighter">00:00:00</h1>
+                <p id="live-date" class="text-xs font-bold text-slate-400 mt-2 uppercase tracking-widest"></p>
+            </div>
+
+            <div class="flex flex-col items-center justify-center py-10">
+                <button id="btn-absen-action" onclick="doAttendance()" disabled class="btn-absen bg-blue-600 text-white">
+                    <i id="action-icon" class="fa fa-fingerprint text-4xl mb-2"></i>
+                    <span id="action-text" class="font-black text-[10px] uppercase tracking-widest">Tunggu GPS...</span>
+                </button>
+                <p id="status-hari-ini" class="mt-6 text-[10px] font-black uppercase text-slate-400">Belum ada aktivitas hari ini</p>
+            </div>
+
+            <div class="p-4 bg-amber-50 rounded-2xl border border-amber-100 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <i class="fa fa-camera text-amber-500"></i>
+
+            </div>
+        </div>
+
+        <div id="page-izin" class="page p-6">
+            <h2 class="text-xl font-black text-slate-800 mb-6 uppercase italic">Pengajuan Izin</h2>
+            <div class="space-y-4">
+                <select id="izin-jenis" class="w-full p-4 bg-white border rounded-2xl font-bold outline-none">
+                    <option value="Izin">Izin Keperluan</option>
+                    <option value="Sakit">Sakit</option>
+                    <option value="Terlambat">Terlambat</option>
+                </select>
+                <input type="date" id="izin-tgl" class="w-full p-4 bg-white border rounded-2xl font-bold outline-none">
+                <textarea id="izin-alasan" placeholder="Tulis alasan lengkap..." class="w-full p-4 bg-white border rounded-2xl font-medium text-sm h-32 outline-none"></textarea>
+                <button onclick="handleIzin()" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-black uppercase shadow-lg">Kirim Sekarang</button>
+            </div>
+        </div>
+
+        <div id="page-history" class="page p-6">
+            <h2 class="text-xl font-black text-slate-800 mb-6 uppercase italic text-center">Riwayat Anda</h2>
+            <div id="history-container" class="space-y-3">
+                </div>
+        </div>
+
+        <nav id="main-nav" class="bottom-nav hidden">
+            <button onclick="navTo('page-home', this)" class="nav-item text-blue-600 transition-all"><i class="fa fa-home text-xl"></i></button>
+            <button onclick="navTo('page-history', this)" class="nav-item text-slate-300 transition-all"><i class="fa fa-clock-rotate-left text-xl"></i></button>
+            <button onclick="navTo('page-izin', this)" class="nav-item text-slate-300 transition-all"><i class="fa fa-envelope-open-text text-xl"></i></button>
+            <button onclick="location.reload()" class="nav-item text-red-300 transition-all"><i class="fa fa-power-off text-xl"></i></button>
+        </nav>
+
+    </div>
+
+    <script>
+        // CONFIG SUPABASE
+        const SB_URL = 'https://cvswzigomnpnllsgcqoc.supabase.co';
+        const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN2c3d6aWdvbW5wbmxsc2djcW9jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4ODMzMTMsImV4cCI6MjA5MTQ1OTMxM30.QZ-FVL2o100ncLh70v8yg0TmtiFo7hA2fxlyhdRw9OQ';
+        const sb = supabase.createClient(SB_URL, SB_KEY);
+
+        let currentUser = null;
+        let officeLoc = { lat: 1.429587, lng: 125.123135, radius: 50 };
+        let userPos = { lat: 0, lng: 0 };
+        let isInside = false;
+        let hasCheckedIn = false;
+
+        // LOGIN
+        async function handleLogin() {
+            const hp = document.getElementById('login-hp').value;
+            const pass = document.getElementById('login-pass').value;
+
+            const { data, error } = await sb.from('pegawai').select('*').eq('no_hp', hp).eq('password', pass).single();
+
+            if (data) {
+                currentUser = data;
+                document.getElementById('user-display-name').innerText = data.nama;
+                document.getElementById('page-login').classList.remove('active');
+                document.getElementById('main-nav').classList.remove('hidden');
+                document.getElementById('main-header').classList.remove('hidden');
+                navTo('page-home');
+                initSystem();
+            } else {
+                alert("Nomor HP atau Password salah!");
+            }
+        }
+
+        function navTo(pageId, el) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById(pageId).classList.add('active');
+            if(el) {
+                document.querySelectorAll('.nav-item').forEach(i => i.classList.replace('text-blue-600', 'text-slate-300'));
+                el.classList.replace('text-slate-300', 'text-blue-600');
+            }
+            if(pageId === 'page-history') loadHistory();
+        }
+
+        // INITIALIZE SYSTEM
+        async function initSystem() {
+            // Load Settings GPS
+            const { data: sets } = await sb.from('settings').select('*');
+            sets.forEach(s => {
+                if(s.nama_setting === 'lat') officeLoc.lat = parseFloat(s.value);
+                if(s.nama_setting === 'lng') officeLoc.lng = parseFloat(s.value);
+                if(s.nama_setting === 'radius') officeLoc.radius = parseInt(s.value);
+            });
+
+            // Check Status Hari Ini
+            checkTodayStatus();
+            startGPSWatch();
+        }
+
+        async function checkTodayStatus() {
+            const today = new Date().toISOString().split('T')[0];
+            const { data } = await sb.from('absensi').select('*').eq('pegawai_id', currentUser.id).eq('tanggal', today).single();
+            
+            if(data) {
+                if(data.jam_masuk && !data.jam_keluar) {
+                    hasCheckedIn = true;
+                    updateAbsenButton('keluar');
+                    document.getElementById('status-hari-ini').innerText = `Masuk pada: ${data.jam_masuk}`;
+                } else if(data.jam_keluar) {
+                    document.getElementById('btn-absen-action').disabled = true;
+                    document.getElementById('action-text').innerText = "Sudah Pulang";
+                    document.getElementById('status-hari-ini').innerText = "Tugas Selesai Hari Ini";
+                }
+            }
+        }
+
+        // GPS WATCHER
+        function startGPSWatch() {
+            if (navigator.geolocation) {
+                navigator.geolocation.watchPosition(pos => {
+                    userPos.lat = pos.coords.latitude;
+                    userPos.lng = pos.coords.longitude;
+                    
+                    const dist = calculateDistance(userPos.lat, userPos.lng, officeLoc.lat, officeLoc.lng);
+                    const gpsText = document.getElementById('gps-text');
+                    const gpsBox = document.getElementById('gps-box');
+                    const btn = document.getElementById('btn-absen-action');
+
+                    if (dist <= officeLoc.radius) {
+                        isInside = true;
+                        gpsText.innerText = "Lokasi Valid (Siap Absen)";
+                        gpsBox.classList.replace('bg-slate-50', 'bg-emerald-50');
+                        btn.disabled = false;
+                        updateAbsenButton(hasCheckedIn ? 'keluar' : 'masuk');
+                    } else {
+                        isInside = false;
+                        gpsText.innerText = `Diluar Radius (${Math.round(dist)}m dari kantor)`;
+                        gpsBox.classList.replace('bg-emerald-50', 'bg-slate-50');
+                        btn.disabled = true;
+                        document.getElementById('action-text').innerText = "Luar Jangkauan";
+                    }
+                }, null, { enableHighAccuracy: true });
+            }
+        }
+
+        function updateAbsenButton(type) {
+            const txt = document.getElementById('action-text');
+            const icon = document.getElementById('action-icon');
+            const btn = document.getElementById('btn-absen-action');
+
+            if(type === 'masuk') {
+                txt.innerText = "Absen Masuk";
+                icon.className = "fa fa-fingerprint text-4xl mb-2";
+                btn.className = "btn-absen bg-blue-600 text-white";
+            } else {
+                txt.innerText = "Absen Keluar";
+                icon.className = "fa fa-door-open text-4xl mb-2";
+                btn.className = "btn-absen bg-white border-8 border-blue-600 text-blue-600";
+            }
+        }
+
+        // ACTION ABSENSI
+       async function doAttendance() {
+    // 1. Cek Lokasi
+    if(!isInside) return alert("GAGAL: Anda berada di luar radius kantor!");
+    
+    // 2. Cek apakah user sudah login (ID Pegawai ada?)
+    if(!currentUser || !currentUser.id) {
+        alert("GAGAL: Data login tidak ditemukan. Silakan logout (tombol merah) lalu login kembali.");
+        return;
+    }
+
+    // Kita ganti titik menjadi titik dua agar diterima Supabase
+const timeNow = new Date().toLocaleTimeString('id-ID', {hour12: false}).replace(/\./g, ':');
+    const today = new Date().toISOString().split('T')[0];
+    const coords = `${userPos.lat},${userPos.lng}`;
+
+    try {
+        if(!hasCheckedIn) {
+            // PROSES MASUK
+            const { error } = await sb.from('absensi').insert([{
+                pegawai_id: currentUser.id,
+                jam_masuk: timeNow,
+                lokasi_masuk: coords,
+                tanggal: today,
+                status: 'Hadir'
+            }]);
+            
+            if(error) throw error;
+            alert("BERHASIL ABSEN MASUK!\nJam: " + timeNow);
+            location.reload();
+        } else {
+            // PROSES KELUAR
+            const { error } = await sb.from('absensi').update({
+                jam_keluar: timeNow,
+                lokasi_keluar: coords
+            }).eq('pegawai_id', currentUser.id).eq('tanggal', today);
+            
+            if(error) throw error;
+            alert("BERHASIL ABSEN PULANG!\nHati-hati di jalan.");
+            location.reload();
+        }
+    } catch (err) {
+        // Jika ada error database, ini akan muncul di HP
+        alert("ERROR DATABASE: " + (err.message || "Koneksi terputus"));
+        console.error(err);
+    }
+}
+
+        // IZIN
+        async function handleIzin() {
+            const jenis = document.getElementById('izin-jenis').value;
+            const tgl = document.getElementById('izin-tgl').value;
+            const alasan = document.getElementById('izin-alasan').value;
+
+            if(!tgl || !alasan) return alert("Lengkapi data izin!");
+
+            const { error } = await sb.from('izin').insert([{
+                pegawai_id: currentUser.id,
+                jenis_izin: jenis,
+                tanggal_mulai: tgl,
+                alasan: alasan
+            }]);
+
+            if(!error) {
+                alert("Pengajuan Izin Berhasil Dikirim!");
+                navTo('page-home');
+            }
+        }
+
+        // HISTORY
+        async function loadHistory() {
+            const { data } = await sb.from('absensi').select('*').eq('pegawai_id', currentUser.id).order('tanggal', {ascending: false});
+            const container = document.getElementById('history-container');
+            
+            if(data) {
+                container.innerHTML = data.map(h => `
+                    <div class="bg-white p-4 rounded-2xl border shadow-sm flex justify-between items-center">
+                        <div>
+                            <p class="text-[10px] font-black text-slate-400 uppercase">${h.tanggal}</p>
+                            <p class="text-xs font-extrabold text-slate-800">Masuk: ${h.jam_masuk || '--:--'}</p>
+                            <p class="text-xs font-extrabold text-slate-400">Pulang: ${h.jam_keluar || '--:--'}</p>
+                        </div>
+                        <div class="text-right text-[10px] font-black uppercase ${h.jam_keluar ? 'text-emerald-500' : 'text-blue-500'}">
+                            ${h.jam_keluar ? 'Selesai' : 'Aktif'}
+                        </div>
+                    </div>
+                `).join('');
+            }
+        }
+
+        // UTILS
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3;
+            const dLat = (lat2-lat1) * Math.PI/180;
+            const dLon = (lon2-lon1) * Math.PI/180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+
+        setInterval(() => {
+            const n = new Date();
+            document.getElementById('live-clock').innerText = n.toLocaleTimeString('id-ID', {hour12: false});
+            document.getElementById('live-date').innerText = n.toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        }, 1000);
+    </script>
+</body>
+</html>
