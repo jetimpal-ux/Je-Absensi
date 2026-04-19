@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Absensi Maumbi</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root { --primary: #4facfe; --secondary: #00f2fe; }
+        body { background: #f0f2f5; font-family: 'Segoe UI', sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .app-card { width: 90%; max-width: 380px; background: white; border-radius: 30px; padding: 30px; text-align: center; box-shadow: 0 15px 35px rgba(0,0,0,0.1); }
+        
+        /* Desain Tombol Sidik Jari */
+        .fingerprint-btn {
+            width: 120px; height: 120px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border: 8px solid #e0f7ff; display: flex; align-items: center; justify-content: center;
+            margin: 20px auto; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 8px 20px rgba(79, 172, 254, 0.4);
+            color: white; font-size: 50px; position: relative;
+        }
+        .fingerprint-btn:active { transform: scale(0.92); box-shadow: 0 4px 10px rgba(79, 172, 254, 0.2); }
+        .fingerprint-btn.disabled { background: #ccc; border-color: #eee; cursor: not-allowed; box-shadow: none; }
+        
+        .status-text { font-size: 0.9rem; margin-top: 10px; font-weight: 600; }
+        input { border-radius: 12px !important; text-align: center; border: 1px solid #ddd !important; padding: 12px !important; margin-bottom: 15px !important; width: 100%; box-sizing: border-box; }
+        .mode-switch { display: flex; gap: 10px; margin-bottom: 20px; }
+        .mode-btn { flex: 1; padding: 10px; border-radius: 10px; border: 1px solid #ddd; background: #f8f9fa; cursor: pointer; font-size: 0.8rem; font-weight: bold; }
+        .mode-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+    </style>
+</head>
+<body>
+
+<div class="app-card">
+    <h3 style="margin-bottom: 5px;">Maumbi Absensi</h3>
+    <p id="locInfo" style="font-size: 0.8rem; color: #888; margin-bottom: 20px;">Mencari lokasi...</p>
+
+    <input type="text" id="empCode" placeholder="Masukkan UUID">
+
+    <div class="mode-switch">
+        <button id="modeMasuk" class="mode-btn active" onclick="setMode('masuk')">MASUK</button>
+        <button id="modePulang" class="mode-btn" onclick="setMode('pulang')">PULANG</button>
+    </div>
+
+    <div id="btnAbsen" class="fingerprint-btn disabled" onclick="prosesAbsen()">
+        <i class="fa-solid fa-fingerprint"></i>
+    </div>
+    
+    <p class="status-text" id="statusLabel">Tunggu Lokasi...</p>
+</div>
+
+<script>
+    const SB_URL = "https://cvswzigomnpnllsgcqoc.supabase.co";
+    const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN2c3d6aWdvbW5wbmxsc2djcW9jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4ODMzMTMsImV4cCI6MjA5MTQ1OTMxM30.QZ-FVL2o100ncLh70v8yg0TmtiFo7hA2fxlyhdRw9OQ";
+    const supabase = window.supabase.createClient(SB_URL, SB_KEY);
+
+    let mode = 'masuk';
+    let userReady = false;
+
+    function setMode(m) {
+        mode = m;
+        document.getElementById('modeMasuk').classList.toggle('active', m === 'masuk');
+        document.getElementById('modePulang').classList.toggle('active', m === 'pulang');
+        document.getElementById('statusLabel').innerText = m === 'masuk' ? 'Siap Absen Masuk' : 'Siap Absen Pulang';
+    }
+
+    // Simulasi GPS - Pastikan diganti dengan logika hitungJarak() Anda
+    // Saya buatkan default 'true' sementara untuk testing UI
+    function updateLocationInfo(jarak, radius) {
+        const info = document.getElementById('locInfo');
+        const btn = document.getElementById('btnAbsen');
+        const label = document.getElementById('statusLabel');
+
+        if (jarak <= radius) {
+            info.innerHTML = `<span style="color:green font-weight:bold">Di Lokasi (${Math.round(jarak)}m)</span>`;
+            btn.classList.remove('disabled');
+            label.innerText = mode === 'masuk' ? 'Ketuk untuk Masuk' : 'Ketuk untuk Pulang';
+            userReady = true;
+        } else {
+            info.innerHTML = `<span style="color:red">Luar Radius (${Math.round(jarak)}m)</span>`;
+            btn.classList.add('disabled');
+            label.innerText = 'Bawa HP ke Kantor';
+            userReady = false;
+        }
+    }
+
+    async function prosesAbsen() {
+        if (!userReady) return;
+        const code = document.getElementById('empCode').value;
+        if (!code) return Swal.fire("Oops", "Masukkan UUID dulu", "warning");
+
+        Swal.fire({ title: 'Memproses...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); }});
+
+        if (mode === 'masuk') {
+            const { error } = await supabase.from('attendance').insert([
+                { employee_code: code, status: 'Hadir', is_on_site: true, check_in: new Date() }
+            ]);
+            handleResponse(error, "Selamat Bekerja!");
+        } else {
+            const { error } = await supabase.from('attendance')
+                .update({ check_out: new Date() })
+                .eq('employee_code', code)
+                .is('check_out', null);
+            handleResponse(error, "Hati-hati di jalan!");
+        }
+    }
+
+    function handleResponse(error, msg) {
+        if (error) Swal.fire("Gagal", error.message, "error");
+        else Swal.fire("Berhasil", msg, "success");
+    }
+
+    // Panggil fungsi GPS Anda di sini (watchPosition)
+</script>
+</body>
+</html>
