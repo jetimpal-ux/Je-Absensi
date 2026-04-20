@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - Rekap Bulanan</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Pengaturan agar saat diprint tampilan tetap rapi */
+        @media print {
+            .no-print { display: none !important; }
+            body { background: white; padding: 0; }
+            .max-w-4xl { max-width: 100%; width: 100%; }
+            .shadow-lg, .shadow-sm { shadow: none !important; border: 1px solid #ddd; }
+            .bg-blue-600 { background-color: #f8fafc !important; color: black !important; border: 1px solid #000; }
+            h2 { color: black !important; }
+        }
+    </style>
+</head>
+<body class="bg-slate-100 p-4">
+    <div class="max-w-4xl mx-auto">
+        <div class="flex justify-between items-center mb-4">
+            <h1 class="text-2xl font-bold uppercase">Laporan Absensi</h1>
+            <button onclick="window.print()" class="no-print bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2 shadow-md">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+                  <path d="M2.5 8a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1z"/>
+                  <path d="M5 1a2 2 0 0 0-2 2v2H2a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1v1a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-1h1a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1V3a2 2 0 0 0-2-2H5zM4 3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2H4V3zm1 5a2 2 0 0 0-2 2v1H2a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v-1a2 2 0 0 0-2-2H5zm7 2v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1z"/>
+                </svg>
+                CETAK LAPORAN
+            </button>
+        </div>
+        
+        <div class="no-print mb-6">
+            <label class="text-xs font-bold text-slate-500 uppercase">Pilih Bulan Laporan:</label>
+            <select id="bulan" onchange="loadData()" class="w-full p-4 rounded-xl shadow-sm font-bold mt-1 border-none focus:ring-2 focus:ring-blue-500">
+                <option value="1">Januari</option><option value="2">Februari</option><option value="3">Maret</option>
+                <option value="4">April</option><option value="5">Mei</option><option value="6">Juni</option>
+                <option value="7">Juli</option><option value="8">Agustus</option><option value="9">September</option>
+                <option value="10">Oktober</option><option value="11">November</option><option value="12">Desember</option>
+            </select>
+        </div>
+
+        <div class="bg-blue-600 p-6 rounded-3xl text-white mb-6 shadow-lg border-print">
+            <h2 class="font-bold mb-4 uppercase text-sm italic">Rekap Kehadiran & Jam Kerja</h2>
+            <div id="rekap-area" class="overflow-x-auto">Memuat rekap...</div>
+        </div>
+
+        <div class="bg-white p-6 rounded-3xl shadow-sm overflow-x-auto border-print">
+            <h2 class="font-bold mb-4 uppercase text-slate-400 text-xs italic">Log Detail Transaksi</h2>
+            <table class="w-full text-left text-sm">
+                <thead>
+                    <tr class="border-b text-slate-400 uppercase text-[10px]">
+                        <th class="py-2">Pegawai & Tanggal</th>
+                        <th>Jam Masuk</th>
+                        <th>Jam Pulang</th>
+                    </tr>
+                </thead>
+                <tbody id="log-area"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // Masukkan Kredensial Supabase Bapak di sini
+        const SB_URL = 'https://cvswzigomnpnllsgcqoc.supabase.co'; 
+        const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN2c3d6aWdvbW5wbmxsc2djcW9jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4ODMzMTMsImV4cCI6MjA5MTQ1OTMxM30.QZ-FVL2o100ncLh70v8yg0TmtiFo7hA2fxlyhdRw9OQ'; 
+        const sb = supabase.createClient(SB_URL, SB_KEY);
+
+        async function loadData() {
+            const bulanPilih = document.getElementById('bulan').value;
+            
+            // Ambil data absensi
+            const { data: abs, error } = await sb.from('absensi').select('*, pegawai(nama)');
+            
+            if (error) {
+                console.error(error);
+                return;
+            }
+
+            let logHtml = '';
+            let rekapData = {};
+
+            // Proses Data
+            abs.forEach(r => {
+                // Filter bulan (asumsi kolom 'tanggal' formatnya YYYY-MM-DD)
+                const tgl = new Date(r.tanggal);
+                if ((tgl.getMonth() + 1) == bulanPilih) {
+                    const nama = r.pegawai?.nama || 'Tanpa Nama';
+                    
+                    if(!rekapData[nama]) rekapData[nama] = {h:0};
+                    rekapData[nama].h++;
+                    
+                    logHtml += `
+                        <tr class="border-b hover:bg-slate-50">
+                            <td class="py-3">
+                                <span class="font-bold text-slate-700">${nama}</span><br>
+                                <span class="text-[10px] text-slate-400">${r.tanggal}</span>
+                            </td>
+                            <td class="text-blue-600 font-mono font-bold">${r.jam_masuk || '--:--'}</td>
+                            <td class="text-orange-600 font-mono font-bold">${r.jam_keluar || '--:--'}</td>
+                        </tr>`;
+                }
+            });
+
+            // Bangun Tabel Rekap
+            let rekapHtml = `<table class="w-full text-sm">
+                                <tr class="text-left opacity-70 border-b border-blue-400">
+                                    <th class="pb-2">Nama Pegawai</th>
+                                    <th class="pb-2 text-center">Total Hadir</th>
+                                </tr>`;
+            
+            Object.keys(rekapData).forEach(n => {
+                rekapHtml += `
+                    <tr class="border-b border-blue-400/30">
+                        <td class="py-2 font-semibold">${n}</td>
+                        <td class="text-center font-bold">${rekapData[n].h} Hari</td>
+                    </tr>`;
+            });
+
+            document.getElementById('log-area').innerHTML = logHtml || '<tr><td colspan="3" class="py-4 text-center text-slate-400">Tidak ada data di bulan ini</td></tr>';
+            document.getElementById('rekap-area').innerHTML = rekapHtml + '</table>';
+        }
+
+        // Jalankan saat pertama kali buka
+        loadData();
+    </script>
+</body>
+</html>
